@@ -232,10 +232,7 @@ textarea{resize:vertical;min-height:90px}
     <label>Namn på steget<input type="text" id="fTitle" required maxlength="140" placeholder="t.ex. Ta fram designförslag"></label>
     <label>Vem gör det?<input type="text" id="fWho" list="whoList" placeholder="Namn, separera flera med komma"></label>
     <datalist id="whoList"></datalist>
-    <div class="row">
-      <label>Datum<input type="date" id="fDate"></label>
-      <label>Tid<input type="time" id="fTime"></label>
-    </div>
+    <label>Datum<input type="date" id="fDate"></label>
     <label>Beskrivning<textarea id="fNote" placeholder="Detaljer, länkar, anteckningar"></textarea></label>
     <label class="toggle goal-toggle" id="goalRow"><input type="checkbox" id="fGoal"> 🏆 Mål (projektets slutpunkt)</label>
     <label class="toggle crit-toggle"><input type="checkbox" id="fCrit"> ⚠ Kritiskt</label>
@@ -278,7 +275,6 @@ const $ = s => document.querySelector(s);
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
 const pad = n => String(n).padStart(2, '0');
 const todayISO = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-const nowTime = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
 /* ---------- config ---------- */
 // Entra ID app registration (SPA, redirect URI brk-multihub://fallkvist.se, delegated Files.ReadWrite.All)
@@ -484,12 +480,11 @@ function fmtDate(s){
   const [y,m,d] = s.date.split('-').map(Number);
   const thisYear = new Date().getFullYear();
   let out = `${d} ${MONTHS[m-1]}` + (y !== thisYear ? ` ${y}` : '');
-  if (s.time) out += ` ${s.time}`;
   return out;
 }
 function lateCheck(s){
   if (!s.date || s.done) return false;
-  const due = new Date(`${s.date}T${s.time || '23:59'}`);
+  const due = new Date(`${s.date}T23:59`);
   return due < new Date();
 }
 const people = s => (s.who || '').split(',').map(x => x.trim()).filter(Boolean);
@@ -680,7 +675,7 @@ function buildRuler(p){
     if (s.date){
       const [y,m,d] = s.date.split('-').map(Number);
       b.appendChild(el('span','rd', `${d} ${MONTHS[m-1]}` + (y !== thisYear ? ` ${y}` : '')));
-      b.appendChild(el('span','rw', WEEKDAYS[new Date(y, m-1, d).getDay()] + (s.time ? ' ' + s.time : '')));
+      b.appendChild(el('span','rw', WEEKDAYS[new Date(y, m-1, d).getDay()]));
     } else b.appendChild(el('span','rd','inget datum'));
     b.title = s.title;
     b.onclick = () => centerOn(x, 0);
@@ -688,7 +683,7 @@ function buildRuler(p){
   });
   // "today" marker, interpolated between the dated steps around now
   const now = Date.now();
-  const dated = p.steps.map((s, i) => s.date ? { i, t: new Date(`${s.date}T${s.time || '12:00'}`).getTime() } : null).filter(Boolean);
+  const dated = p.steps.map((s, i) => s.date ? { i, t: new Date(`${s.date}T12:00`).getTime() } : null).filter(Boolean);
   for (let k = 0; k < dated.length - 1; k++){
     const a = dated[k], b = dated[k+1];
     if (b.t > a.t && a.t <= now && now <= b.t){ todayX = (a.i + (b.i - a.i) * (now - a.t) / (b.t - a.t)) * SPACING; break; }
@@ -740,7 +735,7 @@ function card(s, cx, cy, w, h, cls, ref){
   if (crit){ const w = el('span','warn','⚠'); w.title = 'Kritiskt'; meta.appendChild(w); }
   if (s.date){
     const [y,m,d] = s.date.split('-').map(Number);
-    meta.appendChild(el('span','dt', `${d} ${MONTHS[m-1]}` + (y !== new Date().getFullYear() ? ` ${y}` : '') + (s.time ? ` ${s.time}` : '')));
+    meta.appendChild(el('span','dt', `${d} ${MONTHS[m-1]}` + (y !== new Date().getFullYear() ? ` ${y}` : '')));
     if (late) meta.appendChild(el('span','late-tag','Försenad'));
     else if (!s.done && cls !== 'start') meta.appendChild(el('span','rel', relDays(s)));
   } else if (ref.type === 'main'){
@@ -840,7 +835,7 @@ function openDrawer(c){
   const now = new Date();
   // context text
   let ctxText = '';
-  if (isNew && c.kind === 'start') ctxText = 'Startpunkten för projektet. Datum och tid sätts till nu.';
+  if (isNew && c.kind === 'start') ctxText = 'Startpunkten för projektet. Datumet sätts till idag.';
   else if (isNew && c.kind === 'main') ctxText = c.at >= p.steps.length ? `Nytt steg efter "${p.steps[p.steps.length-1].title}"` : `Nytt steg mellan "${p.steps[c.at-1].title}" och "${p.steps[c.at].title}"`;
   else if (isNew && c.kind === 'detail') ctxText = `Detaljsteg ${c.dir === 'up' ? 'ovanför' : 'under'} "${p.steps[c.i].title}"`;
   else if (c.type === 'detail') ctxText = `Detaljsteg till "${p.steps[c.i].title}"`;
@@ -851,7 +846,6 @@ function openDrawer(c){
   $('#fTitle').value = item ? item.title : (c.kind === 'start' ? 'Projekt startat' : '');
   $('#fWho').value = item ? (item.who || '') : '';
   $('#fDate').value = item ? (item.date || '') : (c.kind === 'start' ? todayISO(now) : '');
-  $('#fTime').value = item ? (item.time || '') : (c.kind === 'start' ? nowTime(now) : '');
   $('#fNote').value = item ? (item.note || '') : '';
   $('#fDone').checked = item ? !!item.done : c.kind === 'start';
   $('#fCrit').checked = item ? !!item.critical : false;
@@ -888,7 +882,7 @@ $('#dForm').onsubmit = e => {
   const data = {
     title: $('#fTitle').value.trim() || 'Namnlöst steg',
     who: people({ who: $('#fWho').value }).join(', '),
-    date: $('#fDate').value, time: $('#fDate').value ? $('#fTime').value : '',
+    date: $('#fDate').value, time: '',
     note: $('#fNote').value.trim(), done: $('#fDone').checked, critical: $('#fCrit').checked,
     ...($('#goalRow').classList.contains('hidden') ? {} : { goal: $('#fGoal').checked })
   };
