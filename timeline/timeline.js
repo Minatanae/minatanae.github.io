@@ -38,6 +38,8 @@ function normalize(p){
   p.steps = Array.isArray(p.steps) ? p.steps : [];
   // details only stack upward: older projects may have a 'down' chain, fold it into 'up'
   p.steps.forEach(s => { s.up = [...(s.up || []), ...(s.down || [])]; s.down = []; });
+  // checklists were removed (detail cards cover that), drop any leftovers
+  p.steps.forEach(s => [s, ...s.up].forEach(x => { delete x.checklist; }));
   return p;
 }
 
@@ -361,7 +363,6 @@ $('#mDup').onclick = async () => {
   const fresh = (x, isStart) => {
     x.id = uid(); x.done = !!isStart; x.doing = false;
     if (x.date && delta) x.date = addDays(x.date, delta);
-    if (x.checklist) x.checklist = x.checklist.map(c => ({ ...c, id: uid(), done: false }));
   };
   cp.steps.forEach((s, i) => { fresh(s, i === 0); s.up.forEach(d => fresh(d, false)); });
   normalize(cp); db.projects.push(cp); save(cp);
@@ -614,8 +615,8 @@ function card(s, cx, cy, w, h, cls, ref){
     const b = el('span','doing-badge'); b.title = 'Pågår'; b.appendChild(el('i')); c.appendChild(b);
   }
   body.appendChild(el('div','title', s.title));
-  const ppl = people(s), cl = s.checklist || [];
-  if (ppl.length || cl.length){
+  const ppl = people(s);
+  if (ppl.length){
     const wr = el('div','who');
     ppl.slice(0,3).forEach(n => {
       const ch = el('span','chip' + (filterPerson === n ? ' on' : '')); const b = el('b', null, initials(n)); b.style.background = colorFor(n); ch.append(b, n);
@@ -624,10 +625,6 @@ function card(s, cx, cy, w, h, cls, ref){
       wr.appendChild(ch);
     });
     if (ppl.length > 3) wr.appendChild(el('span','chip', '+' + (ppl.length - 3)));
-    if (cl.length){
-      const k = cl.filter(x => x.done).length;
-      const cc = el('span', 'clchip' + (k === cl.length ? ' all' : ''), `☑ ${k}/${cl.length}`); cc.title = 'Checklista'; wr.appendChild(cc);
-    }
     body.appendChild(wr);
   }
   c.appendChild(body);
@@ -844,8 +841,6 @@ function openDrawer(c){
   $('#goalOpt').classList.toggle('hidden', !goalOk);
   setRadio('fType', item && item.goal && goalOk ? 'goal' : item && item.milestone ? 'milestone' : 'step');
   setRadio('fStatus', item ? (item.done ? 'done' : item.doing ? 'doing' : 'todo') : (isStart ? 'done' : 'todo'));
-  clItems = item && item.checklist ? item.checklist.map(x => ({ ...x })) : [];
-  $('#clNew').value = ''; renderChecklist();
   const warn = item ? dateWarnings(p).get(item) : null;
   $('#dWarn').textContent = warn ? '⚠ ' + warn : ''; $('#dWarn').classList.toggle('hidden', !warn);
   $('#dDelete').classList.toggle('hidden', isNew);
@@ -878,30 +873,6 @@ document.addEventListener('keydown', e => {
 $('#undoBtn').onclick = undo;
 $('#redoBtn').onclick = redo;
 
-/* ---------- checklist editor (inside the drawer) ---------- */
-let clItems = [];
-function renderChecklist(){
-  const ul = $('#clList'); ul.innerHTML = '';
-  clItems.forEach((it, idx) => {
-    const li = el('li', it.done ? 'done' : '');
-    const cb = el('input'); cb.type = 'checkbox'; cb.checked = !!it.done;
-    cb.onchange = () => { it.done = cb.checked; li.classList.toggle('done', it.done); updateClCount(); };
-    const tx = el('input'); tx.type = 'text'; tx.value = it.text; tx.maxLength = 200;
-    tx.oninput = () => { it.text = tx.value; };
-    tx.onkeydown = e => { if (e.key === 'Enter'){ e.preventDefault(); $('#clNew').focus(); } };
-    const del = el('button','cl-del','×'); del.type = 'button'; del.title = 'Ta bort punkten';
-    del.onclick = () => { clItems.splice(idx, 1); renderChecklist(); };
-    li.append(cb, tx, del); ul.appendChild(li);
-  });
-  updateClCount();
-}
-function updateClCount(){ const n = clItems.length; $('#clCount').textContent = n ? `${clItems.filter(x => x.done).length}/${n}` : ''; }
-function addClItem(){
-  const v = $('#clNew').value.trim(); if (!v) return;
-  clItems.push({ id: uid(), text: v, done: false }); $('#clNew').value = ''; renderChecklist(); $('#clNew').focus();
-}
-$('#clNew').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); addClItem(); } });
-$('#clAddBtn').onclick = addClItem;
 
 /* ---------- print / PDF ---------- */
 let prePrint = null;
@@ -932,7 +903,6 @@ $('#printBtn').onclick = () => { beforePrint(); window.print(); };
 $('#dForm').onsubmit = e => {
   e.preventDefault(); if (!ctx) return;
   const p = current();
-  if ($('#clNew').value.trim()) addClItem();
   const status = getRadio('fStatus');
   const type = $('#typeRow').classList.contains('hidden') ? null : getRadio('fType');
   const data = {
@@ -940,8 +910,7 @@ $('#dForm').onsubmit = e => {
     who: people({ who: $('#fWho').value }).join(', '),
     date: $('#fDate').value, time: '',
     note: $('#fNote').value.trim(), critical: $('#fCrit').checked,
-    done: status === 'done', doing: status === 'doing',
-    checklist: clItems.filter(x => x.text.trim()).map(x => ({ ...x, text: x.text.trim() }))
+    done: status === 'done', doing: status === 'doing'
   };
   if (type !== null){ data.goal = type === 'goal'; data.milestone = type === 'milestone'; }
   let focus = null;
