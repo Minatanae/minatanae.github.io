@@ -12,14 +12,32 @@
   --done:#2f9e44; --done-soft:#e6f6ea; --danger:#e03131;
   --crit:#f5b700; --crit-soft:#fff6d1; --crit-ring:rgba(245,183,0,.25); --crit-text:#9a6b00; --shadow:0 1px 2px rgba(16,24,40,.06),0 4px 14px rgba(16,24,40,.06);
 }
+:root[data-theme="dark"]{
+  --bg:#111317; --dots:#252a31; --panel:#1a1d23; --text:#e9ecf1; --muted:#8b93a1;
+  --line:#3a414c; --border:#2b3038; --accent:#7b93ff; --accent-soft:#232b4a;
+  --done:#51cf66; --done-soft:#1a2e20; --danger:#ff6b6b;
+  --crit:#fcc419; --crit-soft:#3a3214; --crit-ring:rgba(252,196,25,.22); --crit-text:#ffd43b; --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 18px rgba(0,0,0,.25);
+}
 @media (prefers-color-scheme:dark){
-  :root{
+  :root:not([data-theme="light"]){
     --bg:#111317; --dots:#252a31; --panel:#1a1d23; --text:#e9ecf1; --muted:#8b93a1;
     --line:#3a414c; --border:#2b3038; --accent:#7b93ff; --accent-soft:#232b4a;
     --done:#51cf66; --done-soft:#1a2e20; --danger:#ff6b6b;
     --crit:#fcc419; --crit-soft:#3a3214; --crit-ring:rgba(252,196,25,.22); --crit-text:#ffd43b; --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 18px rgba(0,0,0,.25);
   }
 }
+#saveState{font-size:12px;color:var(--muted);padding:0 4px;white-space:nowrap}
+#saveState.error{color:var(--danger);font-weight:600}
+.store-note{font-size:12px;color:var(--muted);margin:-16px 0 24px}
+.overlay{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:16px;background:rgba(10,12,16,.35)}
+.overlay .box{background:var(--panel);border-radius:14px;width:min(440px,100%);padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+#dialog{z-index:40}
+#dlgText{margin:0 0 18px;font-size:15px;white-space:pre-line}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:50;background:var(--text);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:13px;max-width:min(520px,calc(100vw - 32px));box-shadow:var(--shadow)}
+#loading,#fatal{position:fixed;inset:0;display:grid;place-items:center;text-align:center;padding:24px;color:var(--muted)}
+#fatal .box{max-width:460px}
+#fatal h2{color:var(--text);font-size:18px;margin:0 0 8px}
+#fatal p{margin:0 0 16px;white-space:pre-line}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%}
 body{background:var(--bg);color:var(--text);font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
@@ -119,8 +137,6 @@ textarea{resize:vertical;min-height:90px}
 .form-actions{display:flex;gap:8px;margin-top:auto;padding-top:8px}
 .form-actions .grow{flex:1}
 .ctx{font-size:12px;color:var(--muted);background:var(--bg);border-radius:8px;padding:8px 10px}
-#modal{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:16px}
-#modal .box{background:var(--panel);border-radius:14px;width:min(440px,100%);padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
 #modal h2{margin:0 0 14px;font-size:18px}
 #modal form{display:flex;flex-direction:column;gap:14px}
 @media (max-width:600px){#hint{display:none}#topbar .lbl{display:none}}
@@ -131,6 +147,7 @@ textarea{resize:vertical;min-height:90px}
 <section id="home" class="hidden">
   <h1>Timeline</h1>
   <p class="sub">Projekt som tidslinjer. Steg åt höger, detaljer uppåt och nedåt.</p>
+  <p class="store-note" id="storeNote"></p>
   <div class="home-actions">
     <button class="btn primary" id="newProject">+ Nytt projekt</button>
     <button class="btn" id="importBtn">Importera</button>
@@ -145,6 +162,7 @@ textarea{resize:vertical;min-height:90px}
     <button class="btn" id="backBtn" title="Alla projekt">&larr;<span class="lbl"> Projekt</span></button>
     <button id="ptitle" title="Redigera projekt"><strong></strong><span></span></button>
     <div class="spacer"></div>
+    <span id="saveState" aria-live="polite"></span>
     <button class="btn" id="exportBtn" title="Ladda ner som JSON">Exportera</button>
   </div>
   <div id="zoombar">
@@ -179,7 +197,12 @@ textarea{resize:vertical;min-height:90px}
   </form>
 </aside>
 
-<div id="modal" class="hidden">
+<div id="loading">Laddar projekt…</div>
+<div id="fatal" class="hidden"><div class="box"><h2 id="fatalTitle">Något gick fel</h2><p id="fatalText"></p><button class="btn primary" id="fatalRetry">Försök igen</button></div></div>
+<div id="dialog" class="overlay hidden"><div class="box"><p id="dlgText"></p><div class="form-actions"><span class="grow"></span><button class="btn" id="dlgNo">Avbryt</button><button class="btn primary" id="dlgYes">OK</button></div></div></div>
+<div id="toast" class="hidden"></div>
+
+<div id="modal" class="overlay hidden">
   <div class="box">
     <h2 id="mTitle">Nytt projekt</h2>
     <form id="mForm" autocomplete="off">
@@ -205,17 +228,199 @@ const pad = n => String(n).padStart(2, '0');
 const todayISO = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 const nowTime = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
-/* ---------- storage ---------- */
+/* ---------- config ---------- */
+// Entra ID app registration (SPA, redirect URI brk-multihub://fallkvist.se, delegated Files.ReadWrite.All)
+const TEAMS_CLIENT_ID = '';
+const GRAPH_SCOPES = ['Files.ReadWrite.All'];
+const FOLDER = 'Timeline';
+const IN_TEAMS = new URLSearchParams(location.search).get('host') === 'teams';
+
+/* ---------- dialogs ---------- */
+function ask(text, okLabel = 'OK', danger = false){
+  return new Promise(res => {
+    $('#dlgText').textContent = text;
+    const yes = $('#dlgYes'), no = $('#dlgNo');
+    yes.textContent = okLabel; yes.style.background = danger ? 'var(--danger)' : ''; yes.style.borderColor = danger ? 'var(--danger)' : '';
+    $('#dialog').classList.remove('hidden'); setTimeout(() => yes.focus(), 20);
+    const done = v => { $('#dialog').classList.add('hidden'); yes.onclick = no.onclick = null; res(v); };
+    yes.onclick = () => done(true); no.onclick = () => done(false);
+  });
+}
+let toastTimer;
+function notify(text){
+  const t = $('#toast'); t.textContent = text; t.classList.remove('hidden');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.add('hidden'), 5000);
+}
+function setStatus(s){
+  const el = $('#saveState'); if (!IN_TEAMS) { el.textContent = ''; return; }
+  el.className = s === 'error' ? 'error' : '';
+  el.textContent = s === 'saving' ? 'Sparar…' : s === 'saved' ? 'Sparat' : s === 'error' ? 'Kunde inte spara' : '';
+}
+function normalize(p){
+  p.steps = Array.isArray(p.steps) ? p.steps : [];
+  p.steps.forEach(s => { s.up = s.up || []; s.down = s.down || []; });
+  return p;
+}
+
+/* ---------- storage: this browser ---------- */
+const LocalStore = {
+  async init(){
+    let d = null;
+    try { const raw = localStorage.getItem(KEY); if (raw) d = JSON.parse(raw); } catch(e) {}
+    $('#storeNote').textContent = 'Projekten sparas bara i den här webbläsaren. Använd Exportera för att flytta dem.';
+    return (d && Array.isArray(d.projects) ? d.projects : []).map(normalize);
+  },
+  write(){ try { localStorage.setItem(KEY, JSON.stringify(db)); } catch(e) { notify('Kunde inte spara i webbläsaren.'); } },
+  saveProject(){ this.write(); },
+  deleteProject(){ this.write(); },
+  pending: () => false,
+  refresh: async () => false
+};
+
+/* ---------- storage: Teams channel files (SharePoint via Microsoft Graph) ---------- */
+function loadScript(src){
+  return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.crossOrigin = 'anonymous'; s.onload = res; s.onerror = () => rej(new Error('Kunde inte ladda ' + src)); document.head.appendChild(s); });
+}
+function applyTheme(t){ document.documentElement.dataset.theme = (t === 'dark' || t === 'contrast') ? 'dark' : 'light'; }
+
+const TeamsStore = {
+  meta: new Map(),     // projectId -> { itemId, eTag }
+  timers: new Map(), inflight: new Map(),
+  async init(){
+    await Promise.all([
+      loadScript('https://cdn.jsdelivr.net/npm/@microsoft/teams-js@2.59.0/dist/umd/MicrosoftTeams.min.js'),
+      loadScript('https://cdn.jsdelivr.net/npm/@azure/msal-browser@5.27.0/lib/msal-browser.min.js')
+    ]);
+    try { await microsoftTeams.app.initialize(); }
+    catch(e){ throw new Error('Den här adressen fungerar bara inuti Microsoft Teams.\nI webbläsaren: öppna fallkvist.se/timeline utan ?host=teams.'); }
+    const c = await microsoftTeams.app.getContext();
+    applyTheme(c.app && c.app.theme);
+    microsoftTeams.app.registerOnThemeChangeHandler(applyTheme);
+    microsoftTeams.app.notifySuccess();
+    if (!TEAMS_CLIENT_ID) throw new Error('Timeline är inte kopplad till Microsoft ännu (app-ID saknas).');
+    if (!c.team || !c.team.groupId || !c.channel || !c.channel.id) throw new Error('Lägg till Timeline som en flik i en kanal i ett team.');
+    this.pca = await msal.createNestablePublicClientApplication({
+      auth: { clientId: TEAMS_CLIENT_ID, authority: `https://login.microsoftonline.com/${c.user.tenant.id}` }
+    });
+    const ff = await this.graph(`/teams/${c.team.groupId}/channels/${encodeURIComponent(c.channel.id)}/filesFolder`);
+    this.drive = ff.parentReference.driveId; this.root = ff.id;
+    $('#storeNote').textContent = `Projekten sparas i kanalens Filer, i mappen ${FOLDER}. Alla i kanalen ser samma projekt.`;
+    $('#exportBtn').classList.add('hidden');
+    setInterval(() => this.refresh(), 20000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) this.refresh(); });
+    window.addEventListener('beforeunload', e => { if (this.pending()) { e.preventDefault(); e.returnValue = ''; } });
+    const raw = await this.listRaw();
+    return (await Promise.all(raw.map(i => this.download(i).catch(() => null)))).filter(Boolean);
+  },
+  async token(){
+    const req = { scopes: GRAPH_SCOPES };
+    try { return (await this.pca.acquireTokenSilent(req)).accessToken; }
+    catch(e){ return (await this.pca.acquireTokenPopup(req)).accessToken; }
+  },
+  async graph(path, opts = {}){
+    const t = await this.token();
+    const r = await fetch('https://graph.microsoft.com/v1.0' + path, { ...opts, headers: { Authorization: 'Bearer ' + t, ...(opts.headers || {}) } });
+    if (!r.ok){ const e = new Error(`Microsoft Graph svarade ${r.status}`); e.status = r.status; throw e; }
+    return r.status === 204 ? null : r.json();
+  },
+  path(rest){ return `/drives/${this.drive}/items/${this.root}:/${FOLDER}${rest}`; },
+  async listRaw(){
+    try {
+      const res = await this.graph(this.path(':/children?$top=999'));
+      return res.value.filter(i => i.file && i.name.endsWith('.json'));
+    } catch(e){ if (e.status === 404) return []; throw e; }
+  },
+  async download(item){
+    const r = await fetch(item['@microsoft.graph.downloadUrl']);
+    if (!r.ok) throw new Error('download ' + r.status);
+    const p = normalize(await r.json());
+    if (!p.id || typeof p.name !== 'string') return null;
+    this.meta.set(p.id, { itemId: item.id, eTag: item.eTag });
+    return p;
+  },
+  pending(){ return this.timers.size > 0 || this.inflight.size > 0; },
+  saveProject(p){
+    clearTimeout(this.timers.get(p.id)); setStatus('saving');
+    this.timers.set(p.id, setTimeout(() => this.flush(p.id), 600));
+  },
+  async flush(id){
+    this.timers.delete(id);
+    if (this.inflight.has(id)){ this.inflight.set(id, 'again'); return; }
+    const p = db.projects.find(x => x.id === id); if (!p) return;
+    this.inflight.set(id, true);
+    const m = this.meta.get(id);
+    try {
+      const item = await this.graph(this.path(`/${id}.json:/content`) + (m ? '' : '?@microsoft.graph.conflictBehavior=fail'), {
+        method: 'PUT', body: JSON.stringify(p),
+        headers: { 'Content-Type': 'application/json', ...(m ? { 'If-Match': m.eTag } : {}) }
+      });
+      this.meta.set(id, { itemId: item.id, eTag: item.eTag });
+      if (!this.timers.size && this.inflight.size <= 1) setStatus('saved');
+    } catch(e){
+      if (e.status === 412 || e.status === 409){
+        await this.reloadOne(id);
+        notify('Någon annan ändrade projektet samtidigt. Den senaste versionen visas nu, gör om din ändring.');
+        setStatus('');
+      } else {
+        setStatus('error');
+        this.timers.set(id, setTimeout(() => this.flush(id), 8000));
+      }
+    } finally {
+      const again = this.inflight.get(id) === 'again';
+      this.inflight.delete(id);
+      if (again) this.flush(id);
+    }
+  },
+  async reloadOne(id){
+    try {
+      const item = await this.graph(this.path(`/${id}.json`));
+      const p = await this.download(item);
+      const i = db.projects.findIndex(x => x.id === id);
+      if (p && i >= 0) db.projects[i] = p;
+    } catch(e){}
+    rerender();
+  },
+  async deleteProject(p){
+    clearTimeout(this.timers.get(p.id)); this.timers.delete(p.id);
+    const m = this.meta.get(p.id); if (!m) return;
+    try { await this.graph(`/drives/${this.drive}/items/${m.itemId}`, { method: 'DELETE' }); this.meta.delete(p.id); }
+    catch(e){ notify('Kunde inte ta bort projektet i Teams.'); }
+  },
+  async refresh(){
+    if (this.pending() || ctx || !$('#modal').classList.contains('hidden')) return;
+    let raw; try { raw = await this.listRaw(); } catch(e){ return; }
+    if (this.pending() || ctx) return;
+    let changed = false;
+    const seen = new Set();
+    for (const item of raw){
+      const id = item.name.slice(0, -5); seen.add(id);
+      const m = this.meta.get(id);
+      if (m && m.eTag === item.eTag) continue;
+      try {
+        const p = await this.download(item); if (!p) continue;
+        const i = db.projects.findIndex(x => x.id === p.id);
+        if (i >= 0) db.projects[i] = p; else db.projects.push(p);
+        changed = true;
+      } catch(e){}
+    }
+    for (const id of [...this.meta.keys()]){
+      if (!seen.has(id)){ this.meta.delete(id); db.projects = db.projects.filter(x => x.id !== id); changed = true; }
+    }
+    if (changed && !this.pending() && !ctx) rerender();
+  }
+};
+
+const store = IN_TEAMS ? TeamsStore : LocalStore;
 let db = { projects: [] };
-function load(){
-  try { const raw = localStorage.getItem(KEY); if (raw) db = JSON.parse(raw); } catch(e) {}
-  if (!db || !Array.isArray(db.projects)) db = { projects: [] };
+function save(p = current()){
+  if (!p) return;
+  p.updated = Date.now();
+  store.saveProject(p);
 }
-function save(){
-  const p = current(); if (p) p.updated = Date.now();
-  try { localStorage.setItem(KEY, JSON.stringify(db)); } catch(e) { alert('Kunde inte spara i webbläsaren.'); }
+function rerender(){
+  if (currentId && !current()){ location.hash = ''; return; }
+  current() ? renderBoard() : renderHome();
 }
-load();
 
 let currentId = null;
 const current = () => db.projects.find(p => p.id === currentId) || null;
@@ -303,16 +508,17 @@ $('#mForm').onsubmit = e => {
   const description = $('#mDesc').value.trim();
   if (modalMode === 'new'){
     const p = { id: uid(), name, description, created: Date.now(), updated: Date.now(), steps: [] };
-    db.projects.push(p); save(); closeModal();
+    db.projects.push(p); save(p); closeModal();
     location.hash = 'p=' + encodeURIComponent(p.id);
   } else {
     Object.assign(current(), { name, description }); save(); closeModal(); renderBoard();
   }
 };
-$('#mDelete').onclick = () => {
+$('#mDelete').onclick = async () => {
   const p = current();
-  if (!confirm(`Ta bort projektet "${p.name}"? Det går inte att ångra.`)) return;
-  db.projects = db.projects.filter(x => x.id !== p.id); save(); closeModal(); location.hash = '';
+  const msg = IN_TEAMS ? `Ta bort projektet "${p.name}"? Filen hamnar i SharePoints papperskorg.` : `Ta bort projektet "${p.name}"? Det går inte att ångra.`;
+  if (!await ask(msg, 'Ta bort', true)) return;
+  db.projects = db.projects.filter(x => x.id !== p.id); store.deleteProject(p); closeModal(); location.hash = '';
 };
 
 /* ---------- import / export ---------- */
@@ -332,12 +538,11 @@ $('#importFile').onchange = async e => {
     let n = 0;
     for (const p of list){
       if (!p || typeof p.name !== 'string' || !Array.isArray(p.steps)) continue;
-      if (db.projects.some(x => x.id === p.id)) p.id = uid();
-      p.steps.forEach(s => { s.up = s.up || []; s.down = s.down || []; });
-      db.projects.push(p); n++;
+      if (!p.id || db.projects.some(x => x.id === p.id)) p.id = uid();
+      normalize(p); db.projects.push(p); save(p); n++;
     }
-    save(); renderHome(); alert(`${n} projekt importerade.`);
-  } catch(err){ alert('Filen kunde inte läsas.'); }
+    renderHome(); notify(`${n} projekt importerade.`);
+  } catch(err){ notify('Filen kunde inte läsas.'); }
 };
 
 /* ---------- layout constants ---------- */
@@ -575,23 +780,37 @@ $('#dForm').onsubmit = e => {
   if (focus) ensureVisible(focus.x + (focus.y ? 0 : SPACING/2), focus.y);
 };
 
-$('#dDelete').onclick = () => {
+$('#dDelete').onclick = async () => {
   if (!ctx || ctx.mode !== 'edit') return;
-  const p = current();
-  if (ctx.type === 'detail'){
-    if (!confirm('Ta bort detaljsteget?')) return;
-    p.steps[ctx.i][ctx.dir].splice(ctx.di, 1);
+  const p = current(), c = ctx;
+  if (c.type === 'detail'){
+    if (!await ask('Ta bort detaljsteget?', 'Ta bort', true)) return;
+    p.steps[c.i][c.dir].splice(c.di, 1);
   } else {
-    const s = p.steps[ctx.i]; const n = s.up.length + s.down.length;
-    if (!confirm(n ? `Ta bort steget och dess ${n} detaljsteg?` : 'Ta bort steget?')) return;
-    p.steps.splice(ctx.i, 1);
+    const s = p.steps[c.i]; const n = s.up.length + s.down.length;
+    if (!await ask(n ? `Ta bort steget och dess ${n} detaljsteg?` : 'Ta bort steget?', 'Ta bort', true)) return;
+    p.steps.splice(c.i, 1);
   }
   save(); closeDrawer(); renderBoard();
 };
 
 $('#backBtn').onclick = () => { location.hash = ''; };
 
-route();
+async function boot(){
+  $('#fatal').classList.add('hidden'); $('#loading').classList.remove('hidden');
+  try {
+    db.projects = await store.init();
+    $('#loading').classList.add('hidden');
+    route();
+  } catch(e){
+    console.error(e);
+    $('#loading').classList.add('hidden');
+    $('#fatalText').textContent = e && e.message ? e.message : String(e);
+    $('#fatal').classList.remove('hidden');
+  }
+}
+$('#fatalRetry').onclick = () => location.reload();
+boot();
 })();
 </script>
 </body>

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Timeline</title>
+<style>
+:root{--bg:#ffffff;--text:#16191d;--muted:#6b7380;--accent:#3b5bdb}
+:root[data-theme="dark"]{--bg:#1f1f1f;--text:#e9ecf1;--muted:#a0a7b4;--accent:#7b93ff}
+html,body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+main{max-width:520px;padding:24px}
+h1{font-size:20px;margin:0 0 8px}
+p{margin:0 0 10px;color:var(--muted)}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--accent);margin-right:8px}
+</style>
+</head>
+<body>
+<main>
+  <h1><span class="dot"></span>Timeline</h1>
+  <p>Projekt som tidslinjer: steg åt höger, detaljer uppåt och nedåt.</p>
+  <p>Projekten sparas i den här kanalens Filer, i mappen <strong>Timeline</strong>. Alla som har tillgång till kanalen ser och kan redigera samma projekt.</p>
+  <p>Klicka på <strong>Spara</strong> för att lägga till fliken.</p>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@microsoft/teams-js@2.59.0/dist/umd/MicrosoftTeams.min.js" crossorigin="anonymous"></script>
+<script>
+(async () => {
+  await microsoftTeams.app.initialize();
+  const c = await microsoftTeams.app.getContext();
+  const t = c.app && c.app.theme;
+  document.documentElement.dataset.theme = (t === 'dark' || t === 'contrast') ? 'dark' : 'light';
+  microsoftTeams.pages.config.registerOnSaveHandler(async evt => {
+    await microsoftTeams.pages.config.setConfig({
+      entityId: 'timeline',
+      suggestedDisplayName: 'Timeline',
+      contentUrl: 'https://fallkvist.se/timeline/?host=teams',
+      websiteUrl: 'https://fallkvist.se/timeline/'
+    });
+    evt.notifySuccess();
+  });
+  microsoftTeams.pages.config.setValidityState(true);
+  microsoftTeams.app.notifySuccess();
+})();
+</script>
+</body>
+</html>

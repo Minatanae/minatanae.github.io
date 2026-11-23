@@ -1,0 +1,29 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.17",
+  "version": "1.0.0",
+  "id": "bcfea872-ef3a-484a-b99a-dd9a6e401b3d",
+  "developer": {
+    "name": "Fallkvist.se",
+    "websiteUrl": "https://fallkvist.se/timeline/",
+    "privacyUrl": "https://fallkvist.se/timeline/",
+    "termsOfUseUrl": "https://fallkvist.se/timeline/"
+  },
+  "name": { "short": "Timeline", "full": "Timeline projektplanering" },
+  "description": {
+    "short": "Projekt som tidslinjer med steg, ansvariga och detaljer.",
+    "full": "Planera projekt som en tidslinje. Lägg till steg åt höger, detaljsteg uppåt och nedåt, vem som gör vad, datum och kritiska steg. Projekten sparas i kanalens Filer i mappen Timeline."
+  },
+  "icons": { "color": "color.png", "outline": "outline.png" },
+  "accentColor": "#3B5BDB",
+  "configurableTabs": [
+    {
+      "configurationUrl": "https://fallkvist.se/timeline/teams-config.html",
+      "canUpdateConfiguration": false,
+      "scopes": ["team"],
+      "context": ["channelTab"]
+    }
+  ],
+  "permissions": ["identity"],
+  "validDomains": ["fallkvist.se"]
+}
