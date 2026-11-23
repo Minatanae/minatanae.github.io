@@ -9,13 +9,15 @@
 :root{
   --bg:#f6f7f9; --dots:#d9dde3; --panel:#ffffff; --text:#16191d; --muted:#6b7380;
   --line:#c3c9d2; --border:#e2e6eb; --accent:#3b5bdb; --accent-soft:#e7ecff;
-  --done:#2f9e44; --done-soft:#e6f6ea; --danger:#e03131; --shadow:0 1px 2px rgba(16,24,40,.06),0 4px 14px rgba(16,24,40,.06);
+  --done:#2f9e44; --done-soft:#e6f6ea; --danger:#e03131;
+  --crit:#f5b700; --crit-soft:#fff6d1; --crit-ring:rgba(245,183,0,.25); --crit-text:#9a6b00; --shadow:0 1px 2px rgba(16,24,40,.06),0 4px 14px rgba(16,24,40,.06);
 }
 @media (prefers-color-scheme:dark){
   :root{
     --bg:#111317; --dots:#252a31; --panel:#1a1d23; --text:#e9ecf1; --muted:#8b93a1;
     --line:#3a414c; --border:#2b3038; --accent:#7b93ff; --accent-soft:#232b4a;
-    --done:#51cf66; --done-soft:#1a2e20; --danger:#ff6b6b; --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 18px rgba(0,0,0,.25);
+    --done:#51cf66; --done-soft:#1a2e20; --danger:#ff6b6b;
+    --crit:#fcc419; --crit-soft:#3a3214; --crit-ring:rgba(252,196,25,.22); --crit-text:#ffd43b; --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 18px rgba(0,0,0,.25);
   }
 }
 *{box-sizing:border-box}
@@ -81,6 +83,11 @@ input,textarea{font:inherit;color:var(--text)}
 .card.start .chip{background:rgba(255,255,255,.18)}
 .card.done{border-color:var(--done);background:var(--done-soft)}
 .card.done .title{text-decoration:line-through;text-decoration-color:var(--muted);opacity:.8}
+.card.crit{border-color:var(--crit);background:var(--crit-soft);box-shadow:0 0 0 3px var(--crit-ring),var(--shadow)}
+.card.start.crit{background:var(--crit-soft);color:var(--text)}
+.card.start.crit .date{color:var(--muted)}
+.warn{color:var(--crit-text);font-weight:700;display:inline-flex;align-items:center;gap:3px}
+.crit-toggle input{accent-color:var(--crit)}
 .check{width:14px;height:14px;border-radius:50%;background:var(--done);color:#fff;display:inline-grid;place-items:center;font-size:9px;font-weight:700}
 
 .plus{position:absolute;border-radius:50%;border:1.5px dashed var(--line);background:var(--panel);color:var(--muted);display:grid;place-items:center;padding:0;line-height:1;transition:all .15s}
@@ -161,6 +168,7 @@ textarea{resize:vertical;min-height:90px}
       <label>Tid<input type="time" id="fTime"></label>
     </div>
     <label>Beskrivning<textarea id="fNote" placeholder="Detaljer, länkar, anteckningar"></textarea></label>
+    <label class="toggle crit-toggle"><input type="checkbox" id="fCrit"> ⚠ Kritiskt</label>
     <label class="toggle"><input type="checkbox" id="fDone"> Klart</label>
     <div class="form-actions">
       <button type="button" class="btn danger" id="dDelete">Ta bort</button>
@@ -401,12 +409,14 @@ function renderBoard(fit){
 
 function card(s, cx, cy, w, h, cls, ref){
   const isLate = x => cls !== 'start' && lateCheck(x);
-  const c = el('button', 'card ' + cls + (s.done ? ' done' : ''));
+  const crit = s.critical && !s.done;
+  const c = el('button', 'card ' + cls + (s.done ? ' done' : '') + (crit ? ' crit' : ''));
   c.style.cssText = `left:${cx-w/2}px;top:${cy-h/2}px;width:${w}px;height:${h}px`;
-  if (ref.type === 'main' || s.date){
+  if (ref.type === 'main' || s.date || crit){
     const d = el('div', 'date' + (isLate(s) ? ' late' : ''));
+    if (crit) d.appendChild(el('span','warn','⚠ Kritiskt'));
     if (s.done) d.appendChild(el('span','check','✓'));
-    d.appendChild(el('span', null, fmtDate(s) || 'Inget datum'));
+    if (ref.type === 'main' || s.date) d.appendChild(el('span', null, fmtDate(s) || 'Inget datum'));
     if (isLate(s) && ref.type === 'main') d.appendChild(el('span', null, 'Försenad'));
     c.appendChild(d);
   } else if (s.done){
@@ -513,6 +523,7 @@ function openDrawer(c){
   $('#fTime').value = item ? (item.time || '') : (c.kind === 'start' ? nowTime(now) : '');
   $('#fNote').value = item ? (item.note || '') : '';
   $('#fDone').checked = item ? !!item.done : c.kind === 'start';
+  $('#fCrit').checked = item ? !!item.critical : false;
   $('#dDelete').classList.toggle('hidden', isNew);
   $('#dSave').textContent = isNew ? 'Lägg till' : 'Spara';
 
@@ -543,7 +554,7 @@ $('#dForm').onsubmit = e => {
     title: $('#fTitle').value.trim() || 'Namnlöst steg',
     who: people({ who: $('#fWho').value }).join(', '),
     date: $('#fDate').value, time: $('#fDate').value ? $('#fTime').value : '',
-    note: $('#fNote').value.trim(), done: $('#fDone').checked
+    note: $('#fNote').value.trim(), done: $('#fDone').checked, critical: $('#fCrit').checked
   };
   let focus = null;
   if (ctx.mode === 'new'){
