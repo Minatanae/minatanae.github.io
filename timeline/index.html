@@ -111,24 +111,15 @@ input,textarea{font:inherit;color:var(--text)}
 #ruler.compact .rw{display:none}
 #zoombar{bottom:80px!important} #hint{bottom:80px!important}
 .cbody{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
-.meta{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:7px;white-space:nowrap;overflow:hidden;min-height:14px}
-.meta .time{font-weight:700;color:var(--text)}
+.meta{font-size:11px;color:var(--muted);display:flex;align-items:baseline;gap:6px;white-space:nowrap;overflow:hidden;min-height:18px}
+.meta .dt{font-size:14px;font-weight:800;color:var(--text);letter-spacing:-.01em}
+.card.detail .meta .dt{font-size:13px}
+.card.late .meta .dt{color:var(--danger)}
+.meta .warn{font-size:13px}
+.meta .goal-tag{align-self:center}
 .meta .late-tag{color:var(--danger);font-weight:700}
 .meta .nodate{font-style:italic}
-.dtile{flex:none;width:50px;align-self:stretch;border-radius:9px;background:var(--accent-soft);color:var(--accent);display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;gap:3px;position:relative;z-index:1}
-.dtile .wd{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;opacity:.75}
-.dtile .dd{font-size:24px;font-weight:800;letter-spacing:-.02em}
-.dtile .mm{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em}
-.card.detail .dtile{width:42px;border-radius:7px;gap:2px}
-.card.detail .dtile .dd{font-size:19px}
-.card.detail .dtile .wd{font-size:9px}
-.card.detail .dtile .mm{font-size:10px}
-.card.late .dtile{background:var(--danger);color:#fff}
-.card.done .dtile{background:var(--done-soft);color:var(--done)}
-.card.crit .dtile{background:var(--crit);color:#3d2c00}
-.card.goal .dtile{background:var(--gold);color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.35)}
-.card.start .dtile{background:rgba(255,255,255,.2);color:#fff}
-.card.start .meta,.card.start .meta .time{color:rgba(255,255,255,.85)}
+.card.start .meta,.card.start .meta .dt{color:#fff}
 .card .title{font-weight:600;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
 .card .who{display:flex;gap:4px;flex-wrap:nowrap;overflow:hidden;margin-top:auto}
 .chip{font-size:11px;padding:1px 7px 1px 2px;border-radius:999px;background:var(--bg);display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
@@ -143,7 +134,7 @@ input,textarea{font:inherit;color:var(--text)}
 .card.detail .done-badge{top:7px;right:7px;width:18px;height:18px}
 .card.crit{border-color:var(--crit);background:var(--crit-soft);box-shadow:0 0 0 3px var(--crit-ring),var(--shadow)}
 .card.start.crit{background:var(--crit-soft);color:var(--text)}
-.card.start.crit .meta,.card.start.crit .meta .time{color:var(--muted)}
+.card.start.crit .meta,.card.start.crit .meta .dt{color:var(--text)}
 .warn{color:var(--crit-text);font-weight:700;display:inline-flex;align-items:center;gap:3px}
 .crit-toggle input{accent-color:var(--crit)}
 .card.goal{border-color:var(--gold);background:var(--gold-bg);box-shadow:0 0 0 3px var(--gold-ring),0 6px 22px var(--gold-ring)}
@@ -162,7 +153,7 @@ input,textarea{font:inherit;color:var(--text)}
 @keyframes twinkle{0%,100%{opacity:0;transform:scale(.3) rotate(0)}50%{opacity:1;transform:scale(1) rotate(45deg)}}
 @media (prefers-reduced-motion:reduce){.card.goal::before,.spark{animation:none}.spark{opacity:.8}}
 .goal-tag{color:var(--gold-text);font-weight:700;display:inline-flex;align-items:center;gap:4px}
-.goal-tag svg{width:13px;height:13px}
+.goal-tag svg{width:15px;height:15px;display:block}
 .goal-toggle input{accent-color:var(--gold)}
 :root{--trophy:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 2h10v2h3.5v3.5A4.5 4.5 0 0 1 16.3 12a5 5 0 0 1-3.3 2.8V17h3v2.5H8V17h3v-2.2A5 5 0 0 1 7.7 12 4.5 4.5 0 0 1 3.5 7.5V4H7V2zm0 4H5.5v1.5A2.5 2.5 0 0 0 7 9.8V6zm10 0v3.8a2.5 2.5 0 0 0 1.5-2.3V6H17z'/%3E%3Crect x='6.5' y='20.5' width='11' height='2' rx='1'/%3E%3C/svg%3E")}
 .check{width:14px;height:14px;border-radius:50%;background:var(--done);color:#fff;display:inline-grid;place-items:center;font-size:9px;font-weight:700}
@@ -734,19 +725,10 @@ function card(s, cx, cy, w, h, cls, ref){
   const c = el('button', 'card ' + cls + (s.done ? ' done' : '') + (crit ? ' crit' : '') + (late ? ' late' : ''));
   c.style.cssText = `left:${cx-w/2}px;top:${cy-h/2}px;width:${w}px;height:${h}px`;
 
-  // calendar tile: the date is the most important detail on a node
-  if (s.date){
-    const [y,m,d] = s.date.split('-').map(Number);
-    const t = el('div','dtile');
-    t.appendChild(el('span','wd', WEEKDAYS[new Date(y, m-1, d).getDay()]));
-    t.appendChild(el('span','dd', String(d)));
-    t.appendChild(el('span','mm', MONTHS[m-1] + (y !== new Date().getFullYear() ? ` ${String(y).slice(2)}` : '')));
-    c.appendChild(t);
-  }
   const body = el('div','cbody');
   const meta = el('div','meta');
   if (cls === 'goal'){
-    const g = el('span','goal-tag'); g.innerHTML = TROPHY; g.appendChild(document.createTextNode('Mål')); meta.appendChild(g);
+    const g = el('span','goal-tag'); g.innerHTML = TROPHY; g.title = 'Mål'; meta.appendChild(g);
     // twinkling sparkles: [left%, top%, size px, delay s]
     [[86,10,15,0],[68,66,11,.8],[92,56,12,1.5],[54,8,10,1.1],[78,36,9,.4]].forEach(([l,t,sz,dl]) => {
       const sp = el('span','spark');
@@ -755,11 +737,12 @@ function card(s, cx, cy, w, h, cls, ref){
       c.appendChild(sp);
     });
   }
-  if (crit) meta.appendChild(el('span','warn','⚠ Kritiskt'));
+  if (crit){ const w = el('span','warn','⚠'); w.title = 'Kritiskt'; meta.appendChild(w); }
   if (s.date){
+    const [y,m,d] = s.date.split('-').map(Number);
+    meta.appendChild(el('span','dt', `${d} ${MONTHS[m-1]}` + (y !== new Date().getFullYear() ? ` ${y}` : '') + (s.time ? ` ${s.time}` : '')));
     if (late) meta.appendChild(el('span','late-tag','Försenad'));
-    if (s.time) meta.appendChild(el('span','time', s.time));
-    if (!late && !s.done && cls !== 'start') meta.appendChild(el('span','rel', relDays(s)));
+    else if (!s.done && cls !== 'start') meta.appendChild(el('span','rel', relDays(s)));
   } else if (ref.type === 'main'){
     meta.appendChild(el('span','nodate','Inget datum'));
   }
