@@ -115,6 +115,17 @@ input,textarea{font:inherit;color:var(--text)}
 .card.goal::after{content:"";position:absolute;right:-14px;bottom:-18px;width:84px;height:84px;opacity:.13;pointer-events:none;background:var(--gold-text);
   -webkit-mask:var(--trophy) center/contain no-repeat;mask:var(--trophy) center/contain no-repeat}
 .card.goal .date{color:var(--gold-text)}
+.card.goal::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(110deg,transparent 30%,rgba(255,255,255,.75) 48%,rgba(255,255,255,.2) 54%,transparent 70%);
+  background-size:250% 100%;background-position:150% 0;animation:shimmer 3.6s ease-in-out infinite}
+:root[data-theme="dark"] .card.goal::before{opacity:.35}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .card.goal::before{opacity:.35}}
+@keyframes shimmer{0%,55%{background-position:150% 0}100%{background-position:-60% 0}}
+.spark{position:absolute;pointer-events:none;color:#fff;width:10px;height:10px;opacity:0;animation:twinkle 2.4s ease-in-out infinite;
+  filter:drop-shadow(0 0 1.5px var(--gold)) drop-shadow(0 0 4px var(--gold))}
+.spark svg{width:100%;height:100%;display:block}
+@keyframes twinkle{0%,100%{opacity:0;transform:scale(.3) rotate(0)}50%{opacity:1;transform:scale(1) rotate(45deg)}}
+@media (prefers-reduced-motion:reduce){.card.goal::before,.spark{animation:none}.spark{opacity:.8}}
 .goal-tag{color:var(--gold-text);font-weight:700;display:inline-flex;align-items:center;gap:4px}
 .goal-tag svg{width:13px;height:13px}
 .goal-toggle input{accent-color:var(--gold)}
@@ -638,7 +649,16 @@ function card(s, cx, cy, w, h, cls, ref){
   c.style.cssText = `left:${cx-w/2}px;top:${cy-h/2}px;width:${w}px;height:${h}px`;
   if (ref.type === 'main' || s.date || crit){
     const d = el('div', 'date' + (isLate(s) ? ' late' : ''));
-    if (cls === 'goal'){ const g = el('span','goal-tag'); g.innerHTML = TROPHY; g.appendChild(document.createTextNode('Mål')); d.appendChild(g); }
+    if (cls === 'goal'){
+      const g = el('span','goal-tag'); g.innerHTML = TROPHY; g.appendChild(document.createTextNode('Mål')); d.appendChild(g);
+      // twinkling sparkles: [left%, top%, size px, delay s]
+      [[86,10,15,0],[68,66,11,.8],[92,56,12,1.5],[54,8,10,1.1],[78,36,9,.4]].forEach(([l,t,sz,dl]) => {
+        const sp = el('span','spark');
+        sp.innerHTML = '<svg viewBox="0 0 10 10" fill="currentColor"><path d="M5 0l1.2 3.8L10 5 6.2 6.2 5 10 3.8 6.2 0 5l3.8-1.2z"/></svg>';
+        sp.style.cssText = `left:${l}%;top:${t}%;width:${sz}px;height:${sz}px;animation-delay:${dl}s`;
+        c.appendChild(sp);
+      });
+    }
     if (crit) d.appendChild(el('span','warn','⚠ Kritiskt'));
     if (ref.type === 'main' || s.date) d.appendChild(el('span', null, fmtDate(s) || 'Inget datum'));
     if (isLate(s) && ref.type === 'main') d.appendChild(el('span', null, 'Försenad'));
