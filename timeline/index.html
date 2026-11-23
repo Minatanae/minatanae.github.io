@@ -36,7 +36,7 @@
 .overlay .box{background:var(--panel);border-radius:14px;width:min(440px,100%);padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
 #dialog{z-index:40}
 #dlgText{margin:0 0 18px;font-size:15px;white-space:pre-line}
-#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:50;background:var(--text);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:13px;max-width:min(520px,calc(100vw - 32px));box-shadow:var(--shadow)}
+#toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);z-index:50;background:var(--text);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:13px;max-width:min(520px,calc(100vw - 32px));box-shadow:var(--shadow)}
 #loading,#fatal{position:fixed;inset:0;display:grid;place-items:center;text-align:center;padding:24px;color:var(--muted)}
 #fatal .box{max-width:460px}
 #fatal h2{color:var(--text);font-size:18px;margin:0 0 8px}
@@ -92,6 +92,11 @@ input,textarea{font:inherit;color:var(--text)}
 
 .card{position:absolute;background:var(--panel);border:1.5px solid var(--border);border-radius:12px;padding:10px 12px;box-shadow:var(--shadow);text-align:left;display:flex;flex-direction:column;gap:4px;overflow:hidden;transition:border-color .15s}
 .card:hover{border-color:var(--accent)}
+.card.draggable{cursor:grab;touch-action:none}
+.card.dragging{z-index:20;cursor:grabbing;pointer-events:none;transition:none;box-shadow:0 14px 34px rgba(16,24,40,.22);opacity:.95}
+.card.drop-target{border-color:var(--accent)!important;box-shadow:0 0 0 4px var(--accent-soft),var(--shadow)!important}
+.drop-ind{position:absolute;z-index:15;background:var(--accent);border-radius:4px;pointer-events:none;box-shadow:0 0 0 4px var(--accent-soft)}
+#viewport.dnd{cursor:grabbing}
 .card{flex-direction:row;gap:10px}
 #ruler{position:absolute;left:0;right:0;bottom:0;height:64px;z-index:4;background:var(--panel);border-top:1px solid var(--border);overflow:hidden;box-shadow:0 -4px 16px rgba(16,24,40,.05)}
 #ruler::before{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:var(--border)}
@@ -221,7 +226,7 @@ textarea{resize:vertical;min-height:90px}
     <button id="zoomFit" title="Visa allt">&#9634;</button>
     <button id="zoomIn" title="Zooma in">+</button>
   </div>
-  <div id="hint">Dra för att flytta. Ctrl/⌘ + scroll eller nyp för att zooma.</div>
+  <div id="hint">Dra ett kort för att flytta det. Dra i bakgrunden för att panorera, Ctrl/⌘ + scroll för att zooma.</div>
 </section>
 
 <div id="scrim" class="hidden"></div>
@@ -306,7 +311,8 @@ function setStatus(s){
 }
 function normalize(p){
   p.steps = Array.isArray(p.steps) ? p.steps : [];
-  p.steps.forEach(s => { s.up = s.up || []; s.down = s.down || []; });
+  // details only stack upward: older projects may have a 'down' chain, fold it into 'up'
+  p.steps.forEach(s => { s.up = [...(s.up || []), ...(s.down || [])]; s.down = []; });
   return p;
 }
 
@@ -640,8 +646,8 @@ function renderBoard(fit){
       grow(xe + BIG/2, 0);
     }
 
-    // detail chains up and down
-    for (const dir of ['up','down']){
+    // detail chain (upward only)
+    for (const dir of ['up']){
       const sign = dir === 'up' ? -1 : 1;
       let cur = sign * MAIN_H/2;
       s[dir].forEach((d, di) => {
@@ -653,7 +659,7 @@ function renderBoard(fit){
       });
       const py = cur + sign * (GAP - 4 + SMALL/2);
       line(x, cur, x, py - sign*SMALL/2, 'dash');
-      plus(x, py, SMALL, 'small', dir === 'up' ? 'Lägg till detaljsteg (uppåt)' : 'Lägg till detaljsteg (nedåt)',
+      plus(x, py, SMALL, 'small', 'Lägg till detaljsteg',
         () => openDrawer({ mode:'new', kind:'detail', i, dir }));
       grow(x, py + sign*SMALL/2);
     }
@@ -757,8 +763,119 @@ function card(s, cx, cy, w, h, cls, ref){
   }
   c.appendChild(body);
   c.title = (s.date ? fmtDate(s) + '\n' : '') + s.title + (s.note ? `\n\n${s.note}` : '');
-  c.onclick = e => { e.stopPropagation(); openDrawer({ mode:'edit', ...ref }); };
+  c.onclick = e => { e.stopPropagation(); if (suppressClick){ suppressClick = false; return; } openDrawer({ mode:'edit', ...ref }); };
+  if (ref.type === 'main') c.dataset.main = ref.i;
+  // every node except the start node can be dragged
+  if (!(ref.type === 'main' && ref.i === 0)){ c.classList.add('draggable'); c.addEventListener('pointerdown', e => startDrag(e, c, ref)); }
   return c;
+}
+
+/* ---------- drag & drop ---------- */
+// Drop rules: above a step's column -> detail of that step (position by height),
+// onto the middle of a step's card -> detail on top of its stack,
+// anywhere else along the main line -> main step in that gap.
+let drag = null, suppressClick = false, autoPanRaf = null;
+const toWorld = (cx, cy) => ({ x: (cx - view.x) / view.s, y: (cy - view.y) / view.s });
+const detailCenterY = k => -(MAIN_H/2 + GAP + DET_H/2 + k * (GAP + DET_H));
+
+function startDrag(e, c, ref){
+  if (e.button !== 0) return;
+  suppressClick = false;
+  const p0 = { x: e.clientX, y: e.clientY };
+  const onMove = ev => {
+    if (!drag){
+      if (Math.hypot(ev.clientX - p0.x, ev.clientY - p0.y) < 6) return;
+      drag = { c, ref, w0: toWorld(p0.x, p0.y), ind: el('div','drop-ind hidden') };
+      c.classList.add('dragging'); $('#nodes').appendChild(drag.ind); vp.classList.add('dnd');
+    }
+    drag.last = { x: ev.clientX, y: ev.clientY };
+    updateDrag();
+  };
+  const onUp = () => {
+    window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onUp);
+    if (!drag) return;
+    suppressClick = true;
+    const d = drag; drag = null;
+    cancelAnimationFrame(autoPanRaf); autoPanRaf = null; vp.classList.remove('dnd');
+    if (d.target) applyMove(d.ref, d.target); else renderBoard();
+  };
+  window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp); window.addEventListener('pointercancel', onUp);
+}
+
+function updateDrag(fromPan){
+  const d = drag, p = current();
+  const w = toWorld(d.last.x, d.last.y);
+  d.c.style.transform = `translate(${w.x - d.w0.x}px,${w.y - d.w0.y}px) rotate(1.5deg)`;
+  d.target = dropTarget(p, d.ref, w);
+  showDropIndicator(p, d.target);
+  if (!fromPan) autoPan(d.last.x);
+}
+
+function dropTarget(p, ref, w){
+  const n = p.steps.length, mainIdx = ref.type === 'main' ? ref.i : -1;
+  const col = Math.max(0, Math.min(n - 1, Math.round(w.x / SPACING)));
+  const dxc = w.x - col * SPACING;
+  if (col !== mainIdx && Math.abs(dxc) < SPACING / 2){
+    const moving = ref.type === 'detail' ? p.steps[ref.i].up[ref.di] : null;
+    const chain = p.steps[col].up.filter(x => x !== moving);
+    let k = null;
+    if (w.y < -MAIN_H/2 - 6){ k = 0; while (k < chain.length && detailCenterY(k) > w.y) k++; }
+    else if (Math.abs(dxc) < MAIN_W/2 - 40 && Math.abs(w.y) <= MAIN_H/2 + 40) k = chain.length;
+    if (k !== null){
+      if (ref.type === 'detail' && ref.i === col && ref.di === k) return null;   // same place
+      return { kind: 'detail', col, k };
+    }
+  }
+  const remaining = p.steps.map((s, i) => i).filter(i => i !== mainIdx);
+  let t = Math.max(1, remaining.filter(i => i * SPACING < w.x).length);
+  const goalLast = p.steps[n - 1].goal && mainIdx !== n - 1 && n > 1;
+  if (goalLast) t = Math.min(t, remaining.length - 1);                        // nothing goes after the goal
+  if (ref.type === 'main' && t === ref.i) return null;                         // same place
+  return { kind: 'main', t, remaining };
+}
+
+function showDropIndicator(p, t){
+  const ind = drag.ind;
+  document.querySelectorAll('.card.drop-target').forEach(x => x.classList.remove('drop-target'));
+  if (!t){ ind.classList.add('hidden'); return; }
+  ind.classList.remove('hidden');
+  if (t.kind === 'detail'){
+    const y = t.k === 0 ? -MAIN_H/2 - GAP/2 : -(MAIN_H/2 + t.k * (GAP + DET_H) + GAP/2);
+    ind.style.cssText = `left:${t.col * SPACING - DET_W/2}px;top:${y - 3}px;width:${DET_W}px;height:6px`;
+    const tc = document.querySelector(`.card[data-main="${t.col}"]`); if (tc) tc.classList.add('drop-target');
+  } else {
+    const xa = t.remaining[t.t - 1] * SPACING;
+    const xb = t.t < t.remaining.length ? t.remaining[t.t] * SPACING : xa + SPACING;
+    ind.style.cssText = `left:${(xa + xb) / 2 - 3}px;top:${-MAIN_H/2 - 10}px;width:6px;height:${MAIN_H + 20}px`;
+  }
+}
+
+function autoPan(sx){
+  cancelAnimationFrame(autoPanRaf); autoPanRaf = null;
+  const W = vp.clientWidth, edge = 70;
+  const v = sx < edge ? (edge - sx) / 5 : sx > W - edge ? -(sx - (W - edge)) / 5 : 0;
+  if (!v) return;
+  const step = () => { if (!drag) return; view.x += v; apply(); updateDrag(true); autoPanRaf = requestAnimationFrame(step); };
+  autoPanRaf = requestAnimationFrame(step);
+}
+
+function applyMove(ref, t){
+  const p = current();
+  const dest = t.kind === 'detail' ? p.steps[t.col] : null;   // grab before indexes shift
+  let item, kids = [];
+  if (ref.type === 'main'){ item = p.steps.splice(ref.i, 1)[0]; kids = item.up || []; }
+  else item = p.steps[ref.i].up.splice(ref.di, 1)[0];
+  if (t.kind === 'detail'){
+    // details can't have details of their own, so a main step's stack comes along above it
+    const flat = [item, ...kids].map(({ up, down, goal, ...rest }) => rest);
+    dest.up.splice(t.k, 0, ...flat);
+    if (kids.length) notify(`${kids.length} detaljsteg följde med och ligger nu ovanför.`);
+  } else {
+    item.up = ref.type === 'main' ? kids : []; item.down = [];
+    p.steps.splice(t.t, 0, item);
+  }
+  p.steps.forEach((s, i) => { if (s.goal && i !== p.steps.length - 1) s.goal = false; });
+  save(p); renderBoard();
 }
 
 /* ---------- pan & zoom ---------- */
@@ -837,7 +954,7 @@ function openDrawer(c){
   let ctxText = '';
   if (isNew && c.kind === 'start') ctxText = 'Startpunkten för projektet. Datumet sätts till idag.';
   else if (isNew && c.kind === 'main') ctxText = c.at >= p.steps.length ? `Nytt steg efter "${p.steps[p.steps.length-1].title}"` : `Nytt steg mellan "${p.steps[c.at-1].title}" och "${p.steps[c.at].title}"`;
-  else if (isNew && c.kind === 'detail') ctxText = `Detaljsteg ${c.dir === 'up' ? 'ovanför' : 'under'} "${p.steps[c.i].title}"`;
+  else if (isNew && c.kind === 'detail') ctxText = `Detaljsteg till "${p.steps[c.i].title}"`;
   else if (c.type === 'detail') ctxText = `Detaljsteg till "${p.steps[c.i].title}"`;
   else ctxText = c.i === 0 ? 'Projektets startpunkt' : `Steg ${c.i + 1} av ${p.steps.length}`;
   $('#dCtx').textContent = ctxText;
@@ -895,7 +1012,7 @@ $('#dForm').onsubmit = e => {
       p.steps.splice(at, 0, item); focus = { x: at * SPACING, y: 0 };
     } else {
       p.steps[ctx.i][ctx.dir].push(item);
-      const n = p.steps[ctx.i][ctx.dir].length, sign = ctx.dir === 'up' ? -1 : 1;
+      const n = p.steps[ctx.i][ctx.dir].length, sign = -1;
       focus = { x: ctx.i * SPACING, y: sign * (MAIN_H/2 + n * (GAP + DET_H) + 40) };
     }
   } else {
